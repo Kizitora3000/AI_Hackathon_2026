@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETRI!S</title>
+<title>TETRIS</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Share+Tech+Mono&display=swap');
 
@@ -26,12 +26,18 @@
     background: var(--bg);
     color: var(--text);
     font-family: 'Share Tech Mono', monospace;
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     overflow: hidden;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transform-origin: center center;
   }
 
   body::before {
@@ -224,6 +230,8 @@
 </head>
 <body>
 
+<div id="app">
+
 <h1>TETRIS</h1>
 
 <div class="game-wrapper">
@@ -271,6 +279,8 @@
   <span>←→</span> 移動 &nbsp; <span>↑</span> 回転 &nbsp; <span>↓</span> 落下<br>
   <span>SPACE</span> ハードドロップ &nbsp; <span>P</span> ポーズ
 </div>
+
+</div> <!-- /#app -->
 
 <script>
 const canvas = document.getElementById('game-canvas');
@@ -614,6 +624,18 @@ canvas.addEventListener('touchend', e => {
 
 // Init hi-score
 document.getElementById('hi-val').textContent = localStorage.getItem('tetris_hi') || '0';
+
+// Auto-scale to fit viewport
+function scaleApp() {
+  const app = document.getElementById('app');
+  app.style.transform = 'none';
+  const scaleX = window.innerWidth / app.offsetWidth;
+  const scaleY = window.innerHeight / app.offsetHeight;
+  const scale = Math.min(scaleX, scaleY, 1);
+  app.style.transform = `scale(${scale})`;
+}
+scaleApp();
+window.addEventListener('resize', scaleApp);
 </script>
 </body>
 </html>
