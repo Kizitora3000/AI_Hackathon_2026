@@ -6,11 +6,11 @@
 <title>焼却探偵 — BURNING DETECTIVE</title>
 <style>
   :root{
-    --ink:#0d0b09;          /* scorched floor */
+    --ink:#0d0b09;
     --ink2:#1c1712;
     --ash:#9a948a;
     --chalk:#e7e2d4;
-    --evi:#f5c518;          /* crime-scene marker yellow */
+    --evi:#f5c518;
     --evi-edge:#1a1408;
     --beam:#ffe9a8;
     --flame:#ff6a1a;
@@ -97,7 +97,6 @@
 
     <button id="mute" title="音">♪</button>
 
-    <!-- start -->
     <div class="screen" id="startScreen">
       <div class="kicker">完全犯罪 シミュレーター</div>
       <h1 class="title">Burning<br>Detective<span class="jp">焼却探偵</span></h1>
@@ -106,7 +105,6 @@
       <p class="hint">虫眼鏡を証拠に重ねて光を当てる。素早く連続で燃やすほどコンボ加点。制限時間内に全部消せば完全犯罪。</p>
     </div>
 
-    <!-- end -->
     <div class="screen hidden" id="endScreen">
       <div class="kicker" id="endKicker">事件 #001</div>
       <div class="verdict" id="verdict">完全犯罪</div>
@@ -141,7 +139,7 @@
   window.addEventListener('resize', resize);
 
   // ---------- input ----------
-  const lens = { x: 0.5, y: 0.5, active: false }; // normalized
+  const lens = { x: 0.5, y: 0.5, active: false };
   function setFromEvent(e){
     const r = stage.getBoundingClientRect();
     const p = (e.touches && e.touches[0]) ? e.touches[0] : e;
@@ -160,7 +158,6 @@
     try{
       AC = new (window.AudioContext||window.webkitAudioContext)();
       master = AC.createGain(); master.gain.value = muted?0:0.9; master.connect(AC.destination);
-      // looping filtered noise for sizzle, gain driven each frame
       noiseBuf = AC.createBuffer(1, AC.sampleRate*1.2, AC.sampleRate);
       const d = noiseBuf.getChannelData(0);
       for(let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
@@ -192,20 +189,28 @@
 
   // ---------- game state ----------
   const EVIDENCE = [
-    {e:'🔪', n:'凶器のナイフ'}, {e:'🩸', n:'血痕'}, {e:'👣', n:'足跡'},
-    {e:'✉️', n:'脅迫状'}, {e:'🍷', n:'指紋'}, {e:'📷', n:'決定的写真'},
-    {e:'🧤', n:'手袋'}, {e:'🔑', n:'合鍵'}, {e:'🚬', n:'吸い殻'}
+    {e:'🔪', n:'凶器のナイフ', weight: 'heavy'}, {e:'🩸', n:'血痕', weight: 'heavy'}, {e:'👣', n:'足跡', weight: 'heavy'},
+    {e:'✉️', n:'脅迫状', weight: 'light'}, {e:'🍷', n:'指紋', weight: 'heavy'}, {e:'📷', n:'決定的写真', weight: 'light'},
+    {e:'🧤', n:'手袋', weight: 'light'}, {e:'🔑', n:'合鍵', weight: 'heavy'}, {e:'🚬', n:'吸い殻', weight: 'light'}
   ];
-  // hand-placed scatter (normalized, inside margins)
+  
   const SPOTS = [
     [0.20,0.34],[0.50,0.24],[0.80,0.33],
     [0.32,0.58],[0.66,0.55],[0.18,0.74],
     [0.50,0.78],[0.82,0.72],[0.40,0.40]
   ];
+  
   let items=[], parts=[], pops=[];
   let killed=0, score=0, combo=0, maxCombo=0, comboTimer=0;
   let timeLeft=42, running=false, last=0, ended=false;
   const ROUND_TIME=42, BURN_RATE=1.25, COOL=0.28, COMBO_WINDOW=2.2;
+
+  // 天候・環境変数
+  let sunPower = 1.0;
+  let cloudTimer = 10;
+  let isCloudy = false;
+  let windVx = 0.04;
+  let windVy = -0.015;
 
   function reset(){
     resize();
@@ -215,6 +220,11 @@
     }));
     parts=[]; pops=[]; killed=0; score=0; combo=0; maxCombo=0; comboTimer=0;
     timeLeft=ROUND_TIME; ended=false;
+
+    // 環境のリセット
+    sunPower = 1.0; cloudTimer = 8; isCloudy = false;
+    windVx = 0.04; windVy = -0.015;
+
     document.getElementById('total').textContent=items.length;
     document.getElementById('killed').textContent=0;
     document.getElementById('combo').textContent='×1';
@@ -276,6 +286,15 @@
     ts.textContent = Math.max(0, Math.ceil(timeLeft));
     if(timeLeft<=10) ts.classList.add('low');
 
+    // 天候（雲）の更新
+    cloudTimer -= dt;
+    if (cloudTimer <= 0) {
+      isCloudy = !isCloudy;
+      cloudTimer = isCloudy ? 4.0 : 8.0; 
+    }
+    const targetSun = isCloudy ? 0.0 : 1.0;
+    sunPower += (targetSun - sunPower) * dt * 2.0;
+
     // combo decay
     if(comboTimer>0){ comboTimer-=dt; if(comboTimer<=0){ combo=0; document.getElementById('combo').textContent='×1'; } }
 
@@ -284,10 +303,21 @@
 
     for(const it of items){
       if(it.state==='ash'){ if(it.ash<1) it.ash=Math.min(1,it.ash+dt*2.4); continue; }
+
+      // 風の影響
+      if (it.weight === 'light') {
+        it.x += (windVx + (Math.random() - 0.5) * 0.02) * dt;
+        it.y += (windVy + (Math.random() - 0.5) * 0.02) * dt;
+        if (it.x < 0.1 || it.x > 0.9) windVx *= -1;
+        if (it.y < 0.1 || it.y > 0.8) windVy *= -1;
+      }
+
       const dx=px(it.x)-lx, dy=py(it.y)-ly;
       const hot = (dx*dx+dy*dy) < (ir+fr)*(ir+fr)*0.6;
-      if(hot && lens.active){
-        it.heat=Math.min(1, it.heat + BURN_RATE*dt);
+      
+      // 太陽が隠れていると燃えにくい
+      if(hot && lens.active && sunPower > 0.3){
+        it.heat=Math.min(1, it.heat + (BURN_RATE * sunPower)*dt);
         anyBurning=Math.max(anyBurning, it.heat);
         smoke(px(it.x), py(it.y)-ir*0.3, it.heat);
         if(Math.random()<it.heat*0.5) ember(px(it.x)+(Math.random()-.5)*ir, py(it.y));
@@ -297,7 +327,6 @@
       if(it.state==='intact' && it.heat>=1){
         it.state='burning'; it.ig=0;
         burst(px(it.x), py(it.y)); whoosh();
-        // scoring
         comboTimer=COMBO_WINDOW; combo++; maxCombo=Math.max(maxCombo,combo);
         const gain=100*combo; score+=gain;
         document.getElementById('combo').textContent='×'+combo;
@@ -313,7 +342,6 @@
       }
     }
 
-    // sizzle audio level
     if(sizzleGain){ sizzleGain.gain.value = muted?0 : Math.min(0.4, anyBurning*0.4); }
 
     // particles
@@ -327,7 +355,6 @@
     }
     for(let i=pops.length-1;i>=0;i--){ pops[i].life+=dt; pops[i].y-=dt*34; if(pops[i].life>=pops[i].max) pops.splice(i,1); }
 
-    // win / lose
     if(killed>=items.length){ finish(true); }
     else if(timeLeft<=0){ finish(false); }
   }
@@ -352,27 +379,30 @@
 
   // ---------- render ----------
   function roundedScene(){
-    // scorched floor
     const g=ctx.createRadialGradient(W*0.5,H*0.2,10, W*0.5,H*0.5,Math.max(W,H)*0.8);
     g.addColorStop(0,'#241a12'); g.addColorStop(0.55,'#150f0a'); g.addColorStop(1,'#0a0705');
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-    // danger reddening as time runs low
+    
+    // 雲の影
+    if (sunPower < 1.0) {
+      ctx.fillStyle = `rgba(0, 0, 0, ${(1.0 - sunPower) * 0.6})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    
     if(running && !ended){
       const dgr=Math.max(0,(10-timeLeft)/10);
       if(dgr>0){ ctx.fillStyle='rgba(120,10,0,'+(dgr*0.22)+')'; ctx.fillRect(0,0,W,H); }
     }
-    // faint floorboards
     ctx.strokeStyle='rgba(255,220,170,0.03)'; ctx.lineWidth=1;
     for(let y=H*0.12;y<H;y+=Math.max(34,H*0.07)){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke(); }
-    // chalk outline (the victim)
     drawChalk(W*0.62, H*0.6, Math.min(W,H)*0.16);
   }
   function drawChalk(cx,cy,s){
     ctx.save(); ctx.translate(cx,cy); ctx.rotate(0.5);
     ctx.strokeStyle='rgba(231,226,212,0.16)'; ctx.lineWidth=Math.max(2,s*0.05);
     ctx.lineCap='round';
-    ctx.beginPath(); ctx.arc(0,-s*0.9,s*0.32,0,Math.PI*2); ctx.stroke();      // head
-    ctx.beginPath();                                                          // body+limbs
+    ctx.beginPath(); ctx.arc(0,-s*0.9,s*0.32,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath();
     ctx.moveTo(0,-s*0.55); ctx.lineTo(0,s*0.5);
     ctx.moveTo(0,-s*0.3); ctx.lineTo(-s*0.7,s*0.05);
     ctx.moveTo(0,-s*0.3); ctx.lineTo(s*0.6,-s*0.25);
@@ -383,12 +413,10 @@
 
   function drawMarker(x,y,num,r,tilt){
     ctx.save(); ctx.translate(x,y+r*0.55);
-    ctx.rotate(tilt*0.9); // topples when burned
+    ctx.rotate(tilt*0.9);
     const w=r*0.9, h=r*1.0;
-    // shadow
     ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.beginPath();
     ctx.ellipse(0,2,w*0.7,4,0,0,Math.PI*2); ctx.fill();
-    // tent
     ctx.fillStyle=getCSS('--evi'); ctx.strokeStyle=getCSS('--evi-edge'); ctx.lineWidth=Math.max(1,r*0.04);
     ctx.beginPath(); ctx.moveTo(0,-h); ctx.lineTo(w*0.62,0); ctx.lineTo(-w*0.62,0); ctx.closePath();
     ctx.fill(); ctx.stroke();
@@ -402,11 +430,9 @@
 
   function drawItem(it){
     const x=px(it.x), y=py(it.y), ir=itemRadius();
-    // marker behind
     drawMarker(x, y, it.num, ir*0.7, it.state==='ash'?1:it.tilt);
 
     if(it.state==='ash'){
-      // ash pile
       ctx.save(); ctx.globalAlpha=0.9;
       const a=it.ash;
       ctx.fillStyle='rgba(60,55,50,'+(0.85)+')';
@@ -418,19 +444,16 @@
       return;
     }
 
-    // the evidence emoji, scorched + shrinking as it burns
     const burn = it.state==='burning' ? it.ig/0.55 : 0;
     const scale = 1 - burn*0.45;
     ctx.save(); ctx.translate(x,y); ctx.rotate(it.rot + burn*0.3); ctx.scale(scale,scale);
     ctx.font = Math.round(ir*1.15)+'px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.globalAlpha = 1;
     ctx.fillText(it.e, 0, 0);
-    // char overlay (darken with heat)
     if(it.heat>0.02){
       ctx.globalCompositeOperation='source-atop';
       ctx.fillStyle='rgba(20,8,2,'+Math.min(0.85,it.heat*0.95)+')';
       ctx.fillRect(-ir,-ir,ir*2,ir*2);
-      // glowing edges
       ctx.globalCompositeOperation='lighter';
       ctx.fillStyle='rgba(255,'+Math.round(80+120*(1-it.heat))+',20,'+(it.heat*0.5)+')';
       ctx.fillRect(-ir,-ir,ir*2,ir*2);
@@ -450,7 +473,7 @@
         ctx.globalCompositeOperation='lighter';
         ctx.fillStyle='rgba(255,'+Math.round(170*(1-t))+',40,'+(1-t)+')';
         ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
-      } else { // flame
+      } else { 
         ctx.globalCompositeOperation='lighter';
         const c = t<0.5? '255,210,90' : '255,90,20';
         ctx.fillStyle='rgba('+c+','+(1-t)+')';
@@ -461,16 +484,18 @@
   }
 
   function drawBeamAndLens(){
-    if(!lens.active) lens.x=lens.x; // keep
+    if(!lens.active) lens.x=lens.x;
+    
+    // 雲で光全体を弱める
+    ctx.globalAlpha = Math.max(0.1, sunPower);
+
     const lx=px(lens.x), ly=py(lens.y), fr=focalRadius();
     const sunX=W*0.5, sunY=-H*0.12;
-    // sun glow at top
     ctx.save(); ctx.globalCompositeOperation='lighter';
     const sg=ctx.createRadialGradient(sunX,sunY,0,sunX,sunY,H*0.5);
     sg.addColorStop(0,'rgba(255,235,170,0.45)'); sg.addColorStop(1,'rgba(255,235,170,0)');
     ctx.fillStyle=sg; ctx.fillRect(0,0,W,H);
 
-    // converging beam: wide at sun, focusing to lens
     const ang=Math.atan2(ly-sunY, lx-sunX);
     const perp=ang+Math.PI/2;
     const topW=W*0.16, botW=fr*0.5;
@@ -488,7 +513,6 @@
     ctx.closePath(); ctx.fill();
     ctx.restore();
 
-    // focal hot point (additive, pulsing)
     const pulse = 1 + (reduce?0:Math.sin(performance.now()/90)*0.12);
     ctx.save(); ctx.globalCompositeOperation='lighter';
     const fg=ctx.createRadialGradient(lx,ly,0,lx,ly,fr*1.6*pulse);
@@ -496,30 +520,27 @@
     fg.addColorStop(0.25,'rgba(255,220,130,0.7)');
     fg.addColorStop(1,'rgba(255,120,30,0)');
     ctx.fillStyle=fg; ctx.beginPath(); ctx.arc(lx,ly,fr*1.6*pulse,0,Math.PI*2); ctx.fill();
-    // tiny white core
     ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.arc(lx,ly,fr*0.16*pulse,0,Math.PI*2); ctx.fill();
     ctx.restore();
 
-    // the magnifying glass itself
     ctx.save(); ctx.translate(lx,ly);
-    // glass tint
     ctx.beginPath(); ctx.arc(0,0,fr,0,Math.PI*2);
     ctx.fillStyle='rgba(180,210,230,0.08)'; ctx.fill();
-    // highlight sweep
     ctx.beginPath(); ctx.arc(-fr*0.3,-fr*0.3,fr*0.55,0,Math.PI*2);
     ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.fill();
-    // rim
     ctx.lineWidth=Math.max(4,fr*0.18); ctx.strokeStyle='#15110c';
     ctx.beginPath(); ctx.arc(0,0,fr,0,Math.PI*2); ctx.stroke();
     ctx.lineWidth=Math.max(1.5,fr*0.06); ctx.strokeStyle='#b9863f';
     ctx.beginPath(); ctx.arc(0,0,fr*0.92,0,Math.PI*2); ctx.stroke();
-    // handle (points away from sun)
     const ha=ang; const hx=Math.cos(ha), hy=Math.sin(ha);
     ctx.lineWidth=Math.max(6,fr*0.26); ctx.lineCap='round'; ctx.strokeStyle='#3a2412';
     ctx.beginPath(); ctx.moveTo(hx*fr, hy*fr); ctx.lineTo(hx*fr*2.1, hy*fr*2.1); ctx.stroke();
     ctx.lineWidth=Math.max(2,fr*0.1); ctx.strokeStyle='#6b4423';
     ctx.beginPath(); ctx.moveTo(hx*fr, hy*fr); ctx.lineTo(hx*fr*2.0, hy*fr*2.0); ctx.stroke();
     ctx.restore();
+
+    // 透明度リセット
+    ctx.globalAlpha = 1.0;
   }
 
   function drawPops(){
@@ -543,7 +564,6 @@
     drawPops();
   }
 
-  // first paint (so the scene isn't black before start)
   resize();
   reset();
   render();
