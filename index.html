@@ -3,150 +3,372 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>名探偵キメラ・カードバトル - 衝撃の自己紹介</title>
+    <title>名探偵キメラ～衝撃の自己紹介～</title>
     <style>
-        body {
-            background-color: #0f1115;
-            background-image: radial-gradient(circle at 50% 30%, #2c3e50 0%, #0f1115 70%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-            font-family: sans-serif;
+        :root {
+            --bg-color: #0f1115;
+            --panel-bg: #1a1d24;
+            --card-bg: #232731;
+            --accent-gold: #f39c12;
+            --accent-red: #e74c3c;
+            --text-light: #f5f6fa;
+            --text-dark: #7f8c8d;
         }
 
-        /* 漫画パネル（画像ベース） */
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', sans-serif;
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at 50% 30%, #2c3e50 0%, var(--bg-color) 70%);
+            color: var(--text-light);
+            text-align: center;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 30px auto;
+            background: var(--panel-bg);
+            padding: 40px 30px;
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(243, 156, 18, 0.1);
+            border: 1px solid #2c3a47;
+        }
+
+        h1 {
+            color: var(--accent-gold);
+            font-size: 28px;
+            margin-bottom: 5px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            font-weight: 900;
+            text-shadow: 0 2px 10px rgba(243, 156, 18, 0.3);
+        }
+
+        .subtitle {
+            font-size: 12px;
+            color: var(--text-dark);
+            letter-spacing: 2px;
+            margin-bottom: 35px;
+        }
+
+        .card-table {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: linear-gradient(135deg, var(--card-bg) 0%, #171a21 100%);
+            padding: 25px 10px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+            border-bottom: 4px solid #2c3e50;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .card.bump { transform: scale(1.05) translateY(-5px); }
+        .card.title-card {
+            border-bottom-color: var(--accent-red);
+            background: linear-gradient(135deg, #2c1a1a 0%, #1a1010 100%);
+        }
+        .card.title-card .name-part { color: #ff7675; }
+        .label { font-size: 10px; color: var(--text-dark); margin-bottom: 15px; letter-spacing: 1px; font-weight: bold;}
+        .name-part { font-size: 24px; font-weight: bold; color: #ffffff; min-height: 40px; display: flex; align-items: center; justify-content: center;}
+
+        .summon-area {
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            background: #0d0f13;
+            padding: 25px;
+            border-radius: 15px;
+            margin: 35px 0;
+            border: 1px solid #2c3a47;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+        }
+
         .manga-panel-wrapper {
             position: relative;
             width: 100%;
-            max-width: 450px; /* 画像の最大サイズ */
-            margin-bottom: 40px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.8);
-            border: 4px solid #fff;
-            border-radius: 4px;
-            background-color: #fff;
+            height: 220px;
+            border: 4px solid #000;
+            box-shadow: 8px 8px 0px #000;
+            overflow: hidden;
+            background: #fff;
         }
 
-        .base-image {
-            width: 100%;
-            height: auto;
-            display: block;
-        }
-
-        /* 左側の吹き出しを覆う白丸 */
-        .custom-bubble {
+        #linesCanvas {
             position: absolute;
-            top: 7%;
-            left: 2%;
-            width: 45%;
-            height: 32%;
-            background-color: #fff;
-            border-radius: 50%;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .shout-box {
+            position: relative;
+            z-index: 2;
+            width: 85%;
+            height: 80%;
+            margin: 4% auto;
+            background: #fff;
+            border: 4px solid #000;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             padding: 10px;
-            box-sizing: border-box;
-            transform: rotate(-2deg); /* 吹き出しの傾きに合わせる */
+            transform: rotate(-0.5deg);
+            box-shadow: 4px 4px 0px rgba(0,0,0,0.2);
+            animation: shake 0.1s infinite alternate;
+            animation-play-state: paused;
         }
 
-        /* 縦書きテキストコンテナ */
-        .vertical-text {
-            writing-mode: vertical-rl;
-            text-orientation: upright;
-            font-family: 'Hiragino Mincho ProN', 'MS PMincho', serif; /* 漫画風の明朝体 */
-            font-size: clamp(16px, 5vw, 24px); /* 画面サイズに合わせて拡縮 */
+        @keyframes shake {
+            0% { transform: translate(2px, 1px) rotate(-0.5deg); }
+            100% { transform: translate(-2px, -1px) rotate(0.5deg); }
+        }
+
+        .speech-prefix {
+            font-size: 14px;
             font-weight: 900;
             color: #000;
-            line-height: 1.5;
-            height: 90%;
-            display: flex;
-            flex-wrap: wrap;
-            align-content: center;
-            justify-content: center;
+            align-self: flex-start;
+            margin-left: 10px;
+            letter-spacing: 1px;
         }
 
-        /* 召喚ボタン */
+        .speech-suffix {
+            font-size: 24px;
+            font-weight: 950;
+            color: #000000;
+            align-self: flex-end;
+            margin-right: 15px;
+            margin-top: 2px;
+            letter-spacing: 2px;
+            -webkit-text-stroke: 0.5px #000;
+        }
+
+        .full-title {
+            font-size: 14px;
+            color: #555;
+            font-weight: 900;
+            letter-spacing: 1px;
+            margin-top: 2px;
+        }
+
+        .full-name {
+            font-size: 32px;
+            font-weight: 900;
+            color: #000;
+            letter-spacing: -1px;
+            margin: 2px 0;
+            text-align: center;
+            line-height: 1.2;
+        }
+
         button {
-            background: linear-gradient(135deg, #f39c12 0%, #d35400 100%);
+            background: linear-gradient(135deg, var(--accent-gold) 0%, #d35400 100%);
             color: #111;
             border: none;
-            padding: 20px 60px;
-            font-size: 24px;
+            padding: 18px 60px;
+            font-size: 20px;
             font-weight: 900;
             border-radius: 50px;
             cursor: pointer;
-            box-shadow: 0 8px 25px rgba(243, 156, 18, 0.4);
+            box-shadow: 0 6px 25px rgba(243, 156, 18, 0.3);
             transition: all 0.2s ease;
             letter-spacing: 2px;
         }
 
-        button:hover { 
-            transform: translateY(-3px); 
-            box-shadow: 0 12px 30px rgba(243, 156, 18, 0.6); 
-        }
-        
-        button:active {
-            transform: translateY(2px);
-        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(243, 156, 18, 0.5); }
+        .footer-credits { margin-top: 30px; padding-top: 20px; border-top: 1px solid #232731; }
+        .origin-title { font-size: 11px; color: var(--text-dark); letter-spacing: 2px; margin-bottom: 10px;}
+        .origin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 600px; margin: 0 auto; text-align: left; font-size: 13px; color: #bdc3c7; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;}
+        .origin-item span { color: var(--text-dark); margin-right: 5px; }
     </style>
 </head>
 <body>
 
-    <div class="manga-panel-wrapper">
-        <img src="コナン名前.jpg" alt="Conan" class="base-image">
-        
-        <div class="custom-bubble">
-            <div class="vertical-text" id="res-text">
-                <!-- ここに縦書きの名前が入ります -->
+<div class="container">
+    <h1>名探偵キメラ</h1>
+    <div class="subtitle">～衝撃の自己紹介～</div>
+    
+    <div class="card-table">
+        <div class="card title-card" id="c-title"><span class="label">TITLE</span><div id="part-title" class="name-part">-</div></div>
+        <div class="card" id="c-p1"><span class="label">FIRST</span><div id="part-1" class="name-part">-</div></div>
+        <div class="card" id="c-p2"><span class="label">LAST</span><div id="part-2" class="name-part">-</div></div>
+    </div>
+
+    <div class="summon-area">
+        <div class="manga-panel-wrapper">
+            <canvas id="linesCanvas"></canvas>
+            <div class="shout-box" id="shout-box">
+                <div class="speech-prefix">「ボ、ボクの名前は、</div>
+                
+                <div id="res-title" class="full-title"></div>
+                <div id="res-name" class="full-name">READY...</div>
+                
+                <div class="speech-suffix">だ！！！」</div>
             </div>
         </div>
     </div>
 
-    <button onclick="generateChimera()">運命の召喚！</button>
+    <div class="btn-container">
+        <button onclick="generateChimera()">君の名前は？</button>
+    </div>
+
+    <div class="footer-credits">
+        <div class="origin-title">Analysis / 素材元ネタ</div>
+        <div class="origin-grid" id="origin-grid">
+            <div class="origin-item"><span>冠名:</span> -</div>
+            <div class="origin-item"><span>前半:</span> -</div>
+            <div class="origin-item"><span>後半:</span> -</div>
+        </div>
+    </div>
+</div>
 
 <script>
+const titles = [
+    { text: "【世紀の天才】", source: "探偵：シャーロック・ホームズ" },
+    { text: "【灰色の脳細胞】", source: "探偵：エルキュール・ポアロ" },
+    { text: "【見た目は子供】", source: "探偵：江戸川コナン" },
+    { text: "【ジッチャンの名にかけて】", source: "探偵：金田一耕助" },
+    { text: "【変幻自在の怪盗】", source: "怪盗：アルセーヌ・ルパン" },
+    { text: "【完璧なアリバイ】", source: "犯人：ミステリーの定番" },
+    { text: "【計画通りの神世界】", source: "犯人：夜神月（DEATH NOTE）" },
+    { text: "【地獄の傀儡師】", source: "犯人：高遠遙一（金田一少年の事件簿）" },
+    { text: "【全身黒タイツの】", source: "犯人：犯人の犯沢さん / 黒い人" },
+    { text: "【最初からの犯人】", source: "犯人：アガサ・クリスティ某作" },
+    { text: "【二十面相の宿敵】", source: "探偵：明智小五郎" },
+    { text: "【安楽椅子探偵の重鎮】", source: "探偵：ネロ・ウルフ" },
+    { text: "【IQ300の天才】", source: "探偵：御手洗潔" },
+    { text: "【月下の奇術師】", source: "怪盗：怪盗キッド" },
+    { text: "【ルパンを追え！】", source: "警察：銭形警部" }
+];
+
 const parts1 = [
-    { text: "シャー" }, { text: "江戸" }, { text: "金田" }, { text: "古" },
-    { text: "夜神" }, { text: "高" }, { text: "津" }, { text: "黒" },
-    { text: "モリア" }, { text: "浅" }
+    { text: "シャーロック・", source: "探偵：シャーロック・ホームズ" },
+    { text: "江戸川", source: "探偵：江戸川コナン" },
+    { text: "金田一", source: "探偵：金田一耕助" },
+    { text: "古畑", source: "探偵：古畑任三郎" },
+    { text: "夜神", source: "犯人：夜神月" },
+    { text: "高遠", source: "犯人：高遠遙一" },
+    { text: "津川", source: "犯人：津川館長" },
+    { text: "黒い", source: "犯人：黒い犯人" },
+    { text: "モリアーティ", source: "犯人：モリアーティ教授" },
+    { text: "浅見", source: "探偵：浅見光彦" },
+    { text: "明智", source: "探偵：明智小五郎" },
+    { text: "エルキュール・", source: "探偵：エルキュール・ポアロ" },
+    { text: "ネロ・", source: "探偵：ネロ・ウルフ" },
+    { text: "御手洗", source: "探偵：御手洗潔" },
+    { text: "ルパン", source: "怪盗：ルパン三世" },
+    { text: "銭形", source: "警察：銭形警部" }
 ];
 
 const parts2 = [
-    { text: "ロッ" }, { text: "川コ" }, { text: "一耕" }, { text: "畑任" },
-    { text: "ライト" }, { text: "遠遙" }, { text: "川館" }, { text: "タイ" },
-    { text: "ーティ" }, { text: "浅見" }
+    { text: "ホームズ", source: "探偵：シャーロック・ホームズ" },
+    { text: "コナン", source: "探偵：江戸川コナン" },
+    { text: "耕助", source: "探偵：金田一耕助" },
+    { text: "任三郎", source: "探偵：古畑任三郎" },
+    { text: "月（ライト）", source: "犯人：夜神月" },
+    { text: "遙一", source: "犯人：高遠遙一" },
+    { text: "館長", source: "犯人：津川館長" },
+    { text: "犯人", source: "犯人：黒い犯人" },
+    { text: "教授", source: "犯人：モリアーティ教授" },
+    { text: "光彦", source: "探偵：浅見光彦" },
+    { text: "小五郎", source: "探偵：明智小五郎" },
+    { text: "ポアロ", source: "探偵：エルキュール・ポアロ" },
+    { text: "ウルフ", source: "探偵：ネロ・ウルフ" },
+    { text: "潔", source: "探偵：御手洗潔" },
+    { text: "三世", source: "怪盗：ルパン三世" },
+    { text: "幸平", source: "警察：銭形警部" }
 ];
 
-const parts3 = [
-    { text: "ク" }, { text: "ナン" }, { text: "助" }, { text: "三郎" },
-    { text: "月" }, { text: "一" }, { text: "長" }, { text: "ツ" },
-    { text: "教授" }, { text: "ジャック" }
-];
-
-// 初期ロード時にも一度名前を生成する
 window.onload = () => {
-    generateChimera();
+    initCanvases();
 };
 
+function initCanvases() {
+    const linesCanvas = document.getElementById('linesCanvas');
+    linesCanvas.width = linesCanvas.offsetWidth;
+    linesCanvas.height = linesCanvas.offsetHeight;
+    
+    const ctx = linesCanvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, linesCanvas.width, linesCanvas.height);
+    drawSpeedLines(linesCanvas);
+}
+
+function drawSpeedLines(canvas) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const centerX = w / 2;
+    const centerY = h / 2;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+
+    const lineCount = 180;
+    ctx.strokeStyle = '#000000';
+    
+    for (let i = 0; i < lineCount; i++) {
+        const angle = (i * 2 * Math.PI) / lineCount + (Math.random() * 0.05);
+        const radius = 75 + Math.random() * 35;
+        const lineLength = Math.max(w, h);
+
+        const startX = centerX + Math.cos(angle) * radius;
+        const startY = centerY + Math.sin(angle) * radius;
+        const endX = centerX + Math.cos(angle) * lineLength;
+        const endY = centerY + Math.sin(angle) * lineLength;
+
+        ctx.lineWidth = 1 + Math.random() * 2.5;
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+    }
+}
+
 function generateChimera() {
-    const p1 = parts1[Math.floor(Math.random() * parts1.length)].text;
-    const p2 = parts2[Math.floor(Math.random() * parts2.length)].text;
-    const p3 = parts3[Math.floor(Math.random() * parts3.length)].text;
+    const t = titles[Math.floor(Math.random() * titles.length)];
+    const p1 = parts1[Math.floor(Math.random() * parts1.length)];
+    const p2 = parts2[Math.floor(Math.random() * parts2.length)];
 
-    // 名前を結合
-    const fullName = p1 + p2 + p3;
+    const cleanP1 = p1.text.replace(/（.*?）/g, '');
+    const cleanP2 = p2.text.replace(/（.*?）/g, '');
 
-    // 漫画のように右行と左行に分けるため、名前の文字数を真ん中で分割する
-    const midPoint = Math.ceil(fullName.length / 2);
-    const line1 = fullName.substring(0, midPoint);
-    const line2 = fullName.substring(midPoint) + "だ！！！";
+    document.getElementById('part-title').innerText = t.text;
+    document.getElementById('part-1').innerText = cleanP1;
+    document.getElementById('part-2').innerText = cleanP2;
 
-    // 縦書きコンテナに出力（<br>を入れることで右から左へ改行される）
-    document.getElementById('res-text').innerHTML = `${line1}<br>${line2}`;
+    document.getElementById('res-title').innerText = t.text;
+    document.getElementById('res-name').innerText = cleanP1 + cleanP2;
+
+    document.getElementById('origin-grid').innerHTML = `
+        <div class="origin-item"><span>冠名:</span> ${t.source}</div>
+        <div class="origin-item"><span>前半:</span> ${p1.source}</div>
+        <div class="origin-item"><span>後半:</span> ${p2.source}</div>
+    `;
+
+    const linesCanvas = document.getElementById('linesCanvas');
+    drawSpeedLines(linesCanvas);
+
+    const shoutBox = document.getElementById('shout-box');
+    shoutBox.style.animationPlayState = 'running';
+    setTimeout(() => { shoutBox.style.animationPlayState = 'paused'; }, 500);
+
+    const cards = ['c-title', 'c-p1', 'c-p2'];
+    cards.forEach((id, idx) => {
+        const el = document.getElementById(id);
+        el.classList.remove('bump');
+        setTimeout(() => el.classList.add('bump'), idx * 50);
+    });
 }
 </script>
 
