@@ -21,16 +21,16 @@
             background-image: radial-gradient(circle at 50% 30%, #2c3e50 0%, var(--bg-color) 70%);
             color: var(--text-light);
             text-align: center;
-            padding: 20px;
+            padding: 10px; /* 外側の余白を少し縮小 */
             margin: 0;
             min-height: 100vh;
         }
 
         .container {
             max-width: 800px;
-            margin: 30px auto;
+            margin: 15px auto; /* 上下の外側余白を半分に縮小 */
             background: var(--panel-bg);
-            padding: 40px 30px;
+            padding: 20px 25px; /* 上下の内側余白を40pxから20pxに縮小 */
             border-radius: 20px;
             box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(243, 156, 18, 0.1);
             border: 1px solid #2c3a47;
@@ -39,7 +39,8 @@
         h1 {
             color: var(--accent-gold);
             font-size: 28px;
-            margin-bottom: 5px;
+            margin-top: 0; /* 上の無駄な余白をカット */
+            margin-bottom: 3px; /* 下の余白を微調整 */
             letter-spacing: 4px;
             text-transform: uppercase;
             font-weight: 900;
@@ -50,42 +51,18 @@
             font-size: 12px;
             color: var(--text-dark);
             letter-spacing: 2px;
-            margin-bottom: 35px;
+            margin-bottom: 15px; /* 下の余白を35pxから15pxに大幅縮小 */
         }
 
-        .card-table {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-
-        .card {
-            background: linear-gradient(135deg, var(--card-bg) 0%, #171a21 100%);
-            padding: 25px 10px;
-            border-radius: 12px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
-            border-bottom: 4px solid #2c3e50;
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-
-        .card.bump { transform: scale(1.05) translateY(-5px); }
-        .card.title-card {
-            border-bottom-color: var(--accent-red);
-            background: linear-gradient(135deg, #2c1a1a 0%, #1a1010 100%);
-        }
-        .card.title-card .name-part { color: #ff7675; }
-        .label { font-size: 10px; color: var(--text-dark); margin-bottom: 15px; letter-spacing: 1px; font-weight: bold;}
-        .name-part { font-size: 24px; font-weight: bold; color: #ffffff; min-height: 40px; display: flex; align-items: center; justify-content: center;}
-
+        /* 吹き出しエリア */
         .summon-area {
             display: flex;
             align-items: center;
             justify-content: space-around;
             background: #0d0f13;
-            padding: 25px;
+            padding: 15px; /* 上下の余白を25pxから15pxに縮小 */
             border-radius: 15px;
-            margin: 35px 0;
+            margin: 0 0 15px 0; /* ボタンとの間隔を35pxから15pxに縮小 */
             border: 1px solid #2c3a47;
             box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
         }
@@ -93,7 +70,7 @@
         .manga-panel-wrapper {
             position: relative;
             width: 100%;
-            height: 250px;
+            height: 240px; /* 高さを少しだけコンパクトに調整 */
             border: 4px solid #000;
             box-shadow: 8px 8px 0px #000;
             overflow: hidden;
@@ -133,7 +110,7 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            padding: 20px;
+            padding: 15px;
             box-sizing: border-box;
         }
 
@@ -181,11 +158,16 @@
             min-height: 36px;
         }
 
+        /* ボタンコンテナの余白調整 */
+        .btn-container {
+            margin-bottom: 30px; /* カードとの間隔を40pxから30pxに調整 */
+        }
+
         button {
             background: linear-gradient(135deg, var(--accent-gold) 0%, #d35400 100%);
             color: #111;
             border: none;
-            padding: 18px 60px;
+            padding: 16px 55px; /* ボタン自体を少しだけコンパクトに */
             font-size: 20px;
             font-weight: 900;
             border-radius: 50px;
@@ -196,7 +178,34 @@
         }
 
         button:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(243, 156, 18, 0.5); }
-        .footer-credits { margin-top: 30px; padding-top: 20px; border-top: 1px solid #232731; }
+
+        /* カードテーブル */
+        .card-table {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .card {
+            background: linear-gradient(135deg, var(--card-bg) 0%, #171a21 100%);
+            padding: 20px 10px; /* カード内の余白を少し縮小 */
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+            border-bottom: 4px solid #2c3e50;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .card.bump { transform: scale(1.05) translateY(-5px); }
+        .card.title-card {
+            border-bottom-color: var(--accent-red);
+            background: linear-gradient(135deg, #2c1a1a 0%, #1a1010 100%);
+        }
+        .card.title-card .name-part { color: #ff7675; }
+        .label { font-size: 10px; color: var(--text-dark); margin-bottom: 10px; letter-spacing: 1px; font-weight: bold;}
+        .name-part { font-size: 22px; font-weight: bold; color: #ffffff; min-height: 40px; display: flex; align-items: center; justify-content: center;}
+
+        .footer-credits { margin-top: 20px; padding-top: 20px; border-top: 1px solid #232731; }
         .origin-title { font-size: 11px; color: var(--text-dark); letter-spacing: 2px; margin-bottom: 10px;}
         .origin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 600px; margin: 0 auto; text-align: left; font-size: 13px; color: #bdc3c7; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;}
         .origin-item span { color: var(--text-dark); margin-right: 5px; }
@@ -207,12 +216,6 @@
 <div class="container">
     <h1>名探偵キメラ</h1>
     <div class="subtitle">～衝撃の自己紹介～</div>
-    
-    <div class="card-table">
-        <div class="card title-card" id="c-title"><span class="label">TITLE</span><div id="part-title" class="name-part">-</div></div>
-        <div class="card" id="c-p1"><span class="label">FIRST</span><div id="part-1" class="name-part">-</div></div>
-        <div class="card" id="c-p2"><span class="label">LAST</span><div id="part-2" class="name-part">-</div></div>
-    </div>
 
     <div class="summon-area">
         <div class="manga-panel-wrapper">
@@ -232,6 +235,12 @@
 
     <div class="btn-container">
         <button onclick="generateChimera()">君の名前は？</button>
+    </div>
+    
+    <div class="card-table">
+        <div class="card title-card" id="c-title"><span class="label">TITLE</span><div id="part-title" class="name-part">-</div></div>
+        <div class="card" id="c-p1"><span class="label">FIRST</span><div id="part-1" class="name-part">-</div></div>
+        <div class="card" id="c-p2"><span class="label">LAST</span><div id="part-2" class="name-part">-</div></div>
     </div>
 
     <div class="footer-credits">
@@ -331,7 +340,7 @@ function drawSpeedLines(canvas) {
     
     for (let i = 0; i < lineCount; i++) {
         const angle = (i * 2 * Math.PI) / lineCount + (Math.random() * 0.05);
-        const radius = 75 + Math.random() * 35;
+        const radius = 70 + Math.random() * 30;
         const lineLength = Math.max(w, h);
 
         const startX = centerX + Math.cos(angle) * radius;

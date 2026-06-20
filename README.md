@@ -1,5 +1,6 @@
 # AI_Hackathon_2026
 
-# [ここに作品名が入る]
+## 名探偵キメラ
 
-URL：https://aihackathon2026.netlify.app/
+URL1：https://kizitora3000.github.io/AI_Hackathon_2026/
+URL2(URL1が写らない場合)：https://aihackathon2026.netlify.app/
