@@ -77,6 +77,7 @@
     background:transparent;color:var(--hud);font:700 14px/1 inherit;letter-spacing:.08em}
   .replay:active{transform:translateY(1px)}
   .hint{font-size:11px;letter-spacing:.05em;color:var(--hud-dim);max-width:34ch;line-height:1.6}
+  .btn-group{display:flex;gap:12px;margin-top:4px}
 </style>
 </head>
 <body>
@@ -86,7 +87,7 @@
 
     <div id="hud" class="hidden">
       <div class="hudrow">
-        <div id="brand"><b>Burning Detective</b><span>焼却探偵</span></div>
+        <div id="brand"><b>Burning Detective</b><span id="hudStageName">焼却探偵</span></div>
         <div class="right"><div class="tag">残り時間</div><div class="stat" id="timeStat">42</div></div>
       </div>
       <div class="hudrow">
@@ -114,7 +115,10 @@
         <div class="scoreline" id="sc3">0s<small>残り時間</small></div>
       </div>
       <p class="lede" id="endMsg"></p>
-      <button class="replay" id="replayBtn">もう一度</button>
+      <div class="btn-group">
+        <button class="replay" id="replayBtn">もう一度</button>
+        <button class="play hidden" id="nextBtn">次の事件へ</button>
+      </div>
     </div>
   </div>
 </div>
@@ -124,14 +128,14 @@
   "use strict";
   const cv = document.getElementById('game');
   const ctx = cv.getContext('2d');
-  const stage = document.getElementById('stage');
+  const stageEl = document.getElementById('stage');
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------- sizing ----------
   let W = 0, H = 0, DPR = 1;
   function resize(){
     DPR = Math.min(window.devicePixelRatio || 1, 2);
-    const r = stage.getBoundingClientRect();
+    const r = stageEl.getBoundingClientRect();
     W = r.width; H = r.height;
     cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -141,17 +145,17 @@
   // ---------- input ----------
   const lens = { x: 0.5, y: 0.5, active: false };
   function setFromEvent(e){
-    const r = stage.getBoundingClientRect();
+    const r = stageEl.getBoundingClientRect();
     const p = (e.touches && e.touches[0]) ? e.touches[0] : e;
     lens.x = (p.clientX - r.left) / r.width;
     lens.y = (p.clientY - r.top) / r.height;
     lens.active = true;
   }
-  stage.addEventListener('pointermove', setFromEvent);
-  stage.addEventListener('pointerdown', e => { setFromEvent(e); });
-  stage.addEventListener('touchmove', e => { setFromEvent(e); e.preventDefault(); }, {passive:false});
+  stageEl.addEventListener('pointermove', setFromEvent);
+  stageEl.addEventListener('pointerdown', e => { setFromEvent(e); });
+  stageEl.addEventListener('touchmove', e => { setFromEvent(e); e.preventDefault(); }, {passive:false});
 
-  // ---------- audio (sizzle + whoosh) ----------
+  // ---------- audio ----------
   let AC=null, master=null, noiseBuf=null, sizzleGain=null, muted=false;
   function initAudio(){
     if (AC) return;
@@ -199,36 +203,44 @@
     [0.32,0.58],[0.66,0.55],[0.18,0.74],
     [0.50,0.78],[0.82,0.72],[0.40,0.40]
   ];
+
+  // ステージデータ
+  const STAGES = [
+    { name: "CASE 01: 晴天の密室", time: 45, windSpeed: 0 },
+    { name: "CASE 02: 吹き抜ける突風", time: 40, windSpeed: 0.05 },
+    { name: "CASE 03: 暴風雨の予兆", time: 35, windSpeed: 0.10 }
+  ];
   
+  let currentStageIdx = 0;
   let items=[], parts=[], pops=[];
   let killed=0, score=0, combo=0, maxCombo=0, comboTimer=0;
-  let timeLeft=42, running=false, last=0, ended=false;
-  const ROUND_TIME=42, BURN_RATE=1.25, COOL=0.28, COMBO_WINDOW=2.2;
-
-  // 天候・環境変数
-  let sunPower = 1.0;
-  let cloudTimer = 10;
-  let isCloudy = false;
-  let windVx = 0.04;
-  let windVy = -0.015;
+  let timeLeft=45, running=false, last=0, ended=false;
+  
+  const BURN_RATE=1.25, COOL=0.28, COMBO_WINDOW=2.2;
+  let windVx = 0;
+  let windVy = 0;
 
   function reset(){
     resize();
+    const st = STAGES[currentStageIdx];
+    
     items = EVIDENCE.map((d,i)=>({
       ...d, x:SPOTS[i][0], y:SPOTS[i][1], heat:0, state:'intact',
       ig:0, ash:0, tilt:0, num:i+1, rot:(Math.random()-.5)*0.25
     }));
     parts=[]; pops=[]; killed=0; score=0; combo=0; maxCombo=0; comboTimer=0;
-    timeLeft=ROUND_TIME; ended=false;
+    ended=false;
+    
+    // ステージ情報のセット
+    timeLeft = st.time;
+    windVx = st.windSpeed;
+    windVy = -st.windSpeed * 0.4;
 
-    // 環境のリセット
-    sunPower = 1.0; cloudTimer = 8; isCloudy = false;
-    windVx = 0.04; windVy = -0.015;
-
+    document.getElementById('hudStageName').textContent = st.name;
     document.getElementById('total').textContent=items.length;
     document.getElementById('killed').textContent=0;
     document.getElementById('combo').textContent='×1';
-    document.getElementById('timeStat').textContent=ROUND_TIME;
+    document.getElementById('timeStat').textContent=timeLeft;
     document.getElementById('timeStat').classList.remove('low');
   }
 
@@ -240,8 +252,20 @@
     document.getElementById('hud').classList.remove('hidden');
     running=true; last=performance.now(); requestAnimationFrame(loop);
   }
-  document.getElementById('startBtn').addEventListener('click', start);
-  document.getElementById('replayBtn').addEventListener('click', start);
+
+  // ボタンイベント群
+  document.getElementById('startBtn').addEventListener('click', () => {
+    currentStageIdx = 0; start();
+  });
+  document.getElementById('replayBtn').addEventListener('click', () => {
+    if (currentStageIdx >= STAGES.length - 1 && killed >= items.length) {
+      currentStageIdx = 0; // 全クリ後なら最初から
+    }
+    start();
+  });
+  document.getElementById('nextBtn').addEventListener('click', () => {
+    currentStageIdx++; start();
+  });
 
   // ---------- particles ----------
   function smoke(x,y,intensity){
@@ -286,15 +310,6 @@
     ts.textContent = Math.max(0, Math.ceil(timeLeft));
     if(timeLeft<=10) ts.classList.add('low');
 
-    // 天候（雲）の更新
-    cloudTimer -= dt;
-    if (cloudTimer <= 0) {
-      isCloudy = !isCloudy;
-      cloudTimer = isCloudy ? 4.0 : 8.0; 
-    }
-    const targetSun = isCloudy ? 0.0 : 1.0;
-    sunPower += (targetSun - sunPower) * dt * 2.0;
-
     // combo decay
     if(comboTimer>0){ comboTimer-=dt; if(comboTimer<=0){ combo=0; document.getElementById('combo').textContent='×1'; } }
 
@@ -304,10 +319,10 @@
     for(const it of items){
       if(it.state==='ash'){ if(it.ash<1) it.ash=Math.min(1,it.ash+dt*2.4); continue; }
 
-      // 風の影響
-      if (it.weight === 'light') {
-        it.x += (windVx + (Math.random() - 0.5) * 0.02) * dt;
-        it.y += (windVy + (Math.random() - 0.5) * 0.02) * dt;
+      // 風の影響 (windSpeedが0以上のステージのみ)
+      if (it.weight === 'light' && windVx !== 0) {
+        it.x += (windVx + (Math.random() - 0.5) * Math.abs(windVx) * 0.5) * dt;
+        it.y += (windVy + (Math.random() - 0.5) * Math.abs(windVy) * 0.5) * dt;
         if (it.x < 0.1 || it.x > 0.9) windVx *= -1;
         if (it.y < 0.1 || it.y > 0.8) windVy *= -1;
       }
@@ -315,15 +330,15 @@
       const dx=px(it.x)-lx, dy=py(it.y)-ly;
       const hot = (dx*dx+dy*dy) < (ir+fr)*(ir+fr)*0.6;
       
-      // 太陽が隠れていると燃えにくい
-      if(hot && lens.active && sunPower > 0.3){
-        it.heat=Math.min(1, it.heat + (BURN_RATE * sunPower)*dt);
+      if(hot && lens.active){
+        it.heat=Math.min(1, it.heat + BURN_RATE*dt);
         anyBurning=Math.max(anyBurning, it.heat);
         smoke(px(it.x), py(it.y)-ir*0.3, it.heat);
         if(Math.random()<it.heat*0.5) ember(px(it.x)+(Math.random()-.5)*ir, py(it.y));
       } else {
         it.heat=Math.max(0, it.heat - COOL*dt);
       }
+      
       if(it.state==='intact' && it.heat>=1){
         it.state='burning'; it.ig=0;
         burst(px(it.x), py(it.y)); whoosh();
@@ -363,16 +378,37 @@
     ended=true; running=false;
     if(sizzleGain) sizzleGain.gain.value=0;
     const v=document.getElementById('verdict');
-    v.textContent = win?'完全犯罪':'御用だ！';
+    v.textContent = win?'証拠隠滅':'御用だ！';
     v.className='verdict '+(win?'win':'lose');
-    document.getElementById('endKicker').textContent = win?'CASE CLOSED — 証拠隠滅 完了':'CASE OPEN — 証拠 残存';
+    document.getElementById('endKicker').textContent = STAGES[currentStageIdx].name;
     document.getElementById('sc1').innerHTML = score.toLocaleString()+'<small>スコア</small>';
     document.getElementById('sc2').innerHTML = '×'+maxCombo+'<small>最大コンボ</small>';
     document.getElementById('sc3').innerHTML = Math.max(0,Math.ceil(timeLeft))+'s<small>残り時間</small>';
+    
     const remain=items.length-killed;
-    document.getElementById('endMsg').textContent = win
-      ? '現場はすっかり灰の中。名探偵は今日も無実を証明した……自分自身の。'
-      : '証拠が'+remain+'点残ってしまった。手錠の冷たさが心地よい季節だ。';
+    const msgEl = document.getElementById('endMsg');
+    const nextBtn = document.getElementById('nextBtn');
+    const replayBtn = document.getElementById('replayBtn');
+
+    if(win){
+      if(currentStageIdx < STAGES.length - 1){
+        msgEl.textContent = '現場はすっかり灰の中。急いで次の現場へ向かおう。';
+        nextBtn.classList.remove('hidden');
+        replayBtn.classList.add('hidden');
+      } else {
+        v.textContent = '完全犯罪';
+        msgEl.textContent = '全ての証拠を隠滅した！名探偵の完全犯罪は続く……。';
+        nextBtn.classList.add('hidden');
+        replayBtn.classList.remove('hidden');
+        replayBtn.textContent = '最初から遊ぶ';
+      }
+    } else {
+      msgEl.textContent = '証拠が'+remain+'点残ってしまった。手錠の冷たさが心地よい季節だ。';
+      nextBtn.classList.add('hidden');
+      replayBtn.classList.remove('hidden');
+      replayBtn.textContent = 'もう一度';
+    }
+
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('endScreen').classList.remove('hidden');
   }
@@ -382,12 +418,6 @@
     const g=ctx.createRadialGradient(W*0.5,H*0.2,10, W*0.5,H*0.5,Math.max(W,H)*0.8);
     g.addColorStop(0,'#241a12'); g.addColorStop(0.55,'#150f0a'); g.addColorStop(1,'#0a0705');
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-    
-    // 雲の影
-    if (sunPower < 1.0) {
-      ctx.fillStyle = `rgba(0, 0, 0, ${(1.0 - sunPower) * 0.6})`;
-      ctx.fillRect(0, 0, W, H);
-    }
     
     if(running && !ended){
       const dgr=Math.max(0,(10-timeLeft)/10);
@@ -485,9 +515,6 @@
 
   function drawBeamAndLens(){
     if(!lens.active) lens.x=lens.x;
-    
-    // 雲で光全体を弱める
-    ctx.globalAlpha = Math.max(0.1, sunPower);
 
     const lx=px(lens.x), ly=py(lens.y), fr=focalRadius();
     const sunX=W*0.5, sunY=-H*0.12;
@@ -538,9 +565,6 @@
     ctx.lineWidth=Math.max(2,fr*0.1); ctx.strokeStyle='#6b4423';
     ctx.beginPath(); ctx.moveTo(hx*fr, hy*fr); ctx.lineTo(hx*fr*2.0, hy*fr*2.0); ctx.stroke();
     ctx.restore();
-
-    // 透明度リセット
-    ctx.globalAlpha = 1.0;
   }
 
   function drawPops(){
