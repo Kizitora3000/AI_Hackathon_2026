@@ -1,2 +1,5 @@
 # AI_Hackathon_2026
-https://www.aifestival.jp/hackathon
+
+# [ここに作品名が入る]
+
+URL：https://aihackathon2026.netlify.app/
