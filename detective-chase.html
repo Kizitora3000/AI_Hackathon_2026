@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>名探偵チェイス！</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #06060f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  user-select: none;
+}
+canvas { display: block; cursor: pointer; image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+'use strict';
+
+// ── Canvas setup ─────────────────────────────────────────────
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const W = Math.min(900, window.innerWidth  - 4);
+const H = Math.min(520, window.innerHeight - 4);
+canvas.width  = W;
+canvas.height = H;
+
+// ── Layout ───────────────────────────────────────────────────
+const LANES      = 3;
+const LANE_TOP   = Math.round(H * 0.19);
+const LANE_BOT   = Math.round(H * 0.94);
+const LANE_H     = Math.round((LANE_BOT - LANE_TOP) / LANES);
+const LANE_Y     = [0,1,2].map(i => LANE_TOP + LANE_H * i + LANE_H / 2);
+const DET_X      = Math.round(W * 0.17);
+const CHAR_SIZE  = Math.round(LANE_H * 0.75);
+
+// ── Config ───────────────────────────────────────────────────
+const TIME_LIMIT  = 90;
+const BASE_SPEED  = 5.5;
+const MAX_SPEED   = 15;
+const BOOST_TIME  = 2.5;   // seconds
+const HIT_IFRAMES = 1.2;   // seconds invincibility after hit
+
+// ── State ────────────────────────────────────────────────────
+let state   = 'title';
+let score   = 0;
+let progress = 0;   // 0→100, catch criminal at 100
+let timeLeft = TIME_LIMIT;
+let speed    = BASE_SPEED;
+let baseSpd  = BASE_SPEED;
+let frame    = 0;
+let lastTS   = 0;
+
+const det = {
+  x: DET_X, lane: 1, y: LANE_Y[1], ty: LANE_Y[1],
+  anim: 0, animT: 0,
+  boostT: 0, hitT: 0,
+};
+const crim = { lane: 1, laneT: 0, laneInt: 200 };
+
+let items     = [];
+let particles = [];
+let spawnAcc  = 0;
+let bgOff     = 0;
+
+// Pre-generate city skyline
+const BUILDINGS = Array.from({ length: 14 }, (_, i) => ({
+  bx: i * (W / 6.5),
+  bh: 45 + (i * 37 + 11) % 60,
+  bw: 28 + (i * 23 + 7) % 26,
+  wins: Array.from({ length: 30 }, (_, j) => (i * 7 + j * 13) % 3 !== 0),
+}));
+
+// ── Input ────────────────────────────────────────────────────
+const held = {};
+document.addEventListener('keydown', e => {
+  if (held[e.code]) return;
+  held[e.code] = true;
+  onKey(e.code);
+  if (['ArrowUp','ArrowDown','Space'].includes(e.key)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { held[e.code] = false; });
+canvas.addEventListener('click', () => { if (state !== 'playing') startGame(); });
+
+let touchY0 = 0;
+canvas.addEventListener('touchstart', e => { touchY0 = e.touches[0].clientY; e.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchend', e => {
+  const dy = e.changedTouches[0].clientY - touchY0;
+  if (Math.abs(dy) > 22) onKey(dy < 0 ? 'ArrowUp' : 'ArrowDown');
+  else if (state !== 'playing') startGame();
+  e.preventDefault();
+}, { passive: false });
+
+function onKey(code) {
+  if (state !== 'playing') { startGame(); return; }
+  if (code === 'ArrowUp'   || code === 'KeyW') shiftLane(-1);
+  if (code === 'ArrowDown' || code === 'KeyS') shiftLane(+1);
+}
+function shiftLane(d) {
+  const next = Math.max(0, Math.min(2, det.lane + d));
+  if (next !== det.lane) { det.lane = next; det.ty = LANE_Y[next]; }
+}
+
+// ── Items ─────────────────────────────────────────────────────
+const EVID = [
+  { e:'🔍', col:'#FFD700', val:14, spd:3.0, txt:'証拠発見！' },
+  { e:'👣', col:'#90EE90', val: 9, spd:1.8, txt:'足跡発見！' },
+  { e:'📋', col:'#87CEEB', val: 8, spd:1.5, txt:'書類発見！' },
+  { e:'💎', col:'#FF69B4', val:20, spd:4.5, txt:'宝石発見！' },
+  { e:'🔑', col:'#FFA500', val:11, spd:2.2, txt:'鍵発見！'   },
+];
+const OBST = [
+  { e:'🛢', col:'#8B4513', pen:18, txt:'ドラム缶！' },
+  { e:'🚧', col:'#FF4500', pen:24, txt:'工事柵！'   },
+  { e:'📦', col:'#DEB887', pen:14, txt:'荷物！'     },
+];
+
+let popups = []; // floating text popups
+
+function spawnItem() {
+  const takenLanes = new Set(items.filter(i => i.x > W - 140).map(i => i.ln));
+  const free = [0,1,2].filter(l => !takenLanes.has(l));
+  const ln = free.length ? free[Math.floor(Math.random() * free.length)] : Math.floor(Math.random() * 3);
+  const isEv = Math.random() < 0.62;
+  const pool = isEv ? EVID : OBST;
+  const def  = pool[Math.floor(Math.random() * pool.length)];
+  items.push({ ...def, isEv, ln, x: W + 48, y: LANE_Y[ln], on: true });
+}
+
+// ── Particles ─────────────────────────────────────────────────
+function burst(x, y, col, n = 14) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = 2.5 + Math.random() * 6;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * v,
+      vy: Math.sin(a) * v - 2,
+      col, sz: 3 + Math.random() * 5,
+      life: 1, dec: 0.016 + Math.random() * 0.02,
+    });
+  }
+}
+function popup(x, y, txt, col) {
+  popups.push({ x, y, txt, col, life: 1, dec: 0.022 });
+}
+
+// ── Game flow ─────────────────────────────────────────────────
+function startGame() {
+  state = 'playing';
+  score = 0; progress = 0; timeLeft = TIME_LIMIT;
+  speed = BASE_SPEED; baseSpd = BASE_SPEED;
+  frame = 0; lastTS = 0; bgOff = 0; spawnAcc = 0;
+  Object.assign(det, { lane:1, y:LANE_Y[1], ty:LANE_Y[1], anim:0, animT:0, boostT:0, hitT:0 });
+  Object.assign(crim, { lane:1, laneT:0, laneInt:200 });
+  items = []; particles = []; popups = [];
+  BUILDINGS.forEach((b, i) => { b.bx = i * (W / 6.5); });
+}
+
+// ── Update ────────────────────────────────────────────────────
+function update(dt) {
+  if (state !== 'playing') return;
+  frame++;
+  timeLeft = Math.max(0, timeLeft - dt);
+
+  // Detective smooth Y
+  det.y  += (det.ty - det.y) * 0.20;
+
+  // Walk animation
+  det.animT += dt * 9;
+  if (det.animT >= 1) { det.animT = 0; det.anim = (det.anim + 1) % 4; }
+
+  // Timers
+  if (det.boostT > 0) {
+    det.boostT -= dt;
+    if (det.boostT <= 0) { det.boostT = 0; speed = baseSpd; }
+  }
+  if (det.hitT > 0) det.hitT -= dt;
+
+  // Criminal lane switch
+  crim.laneT++;
+  if (crim.laneT >= crim.laneInt) {
+    crim.laneT = 0;
+    crim.lane = Math.floor(Math.random() * 3);
+    crim.laneInt = 100 + Math.random() * 200;
+  }
+
+  // Background scroll
+  bgOff = (bgOff + speed) % 200;
+  BUILDINGS.forEach(b => {
+    b.bx -= speed * 0.35;
+    if (b.bx < -120) b.bx += W + 240;
+  });
+
+  // Spawn items
+  spawnAcc += speed;
+  const threshold = Math.max(160, 380 - progress * 2.2);
+  if (spawnAcc >= threshold) { spawnAcc = 0; spawnItem(); }
+
+  // Update items
+  for (const it of items) {
+    if (!it.on) continue;
+    it.x -= speed;
+    if (Math.abs(it.x - det.x) < 30 && Math.abs(it.y - det.y) < 30) {
+      it.on = false;
+      if (it.isEv) {
+        progress = Math.min(100, progress + it.val);
+        score   += it.val * 10;
+        speed    = Math.min(MAX_SPEED, baseSpd + it.spd * 2.2);
+        det.boostT = BOOST_TIME;
+        burst(det.x, det.y, it.col, 16);
+        popup(det.x, det.y - 50, it.txt, it.col);
+      } else if (det.hitT <= 0) {
+        progress = Math.max(0, progress - it.pen);
+        det.hitT = HIT_IFRAMES;
+        speed    = Math.max(2, baseSpd * 0.55);
+        burst(det.x, det.y, '#FF3333', 22);
+        popup(det.x, det.y - 50, it.txt, '#FF6666');
+        if (det.boostT > 0) { det.boostT = 0; }
+        // Recover after hit stun
+        const snapSpeed = baseSpd;
+        setTimeout(() => { if (state === 'playing' && det.boostT <= 0) speed = snapSpeed; }, 900);
+      }
+    }
+  }
+  items = items.filter(i => i.on && i.x > -80);
+
+  // Particles
+  for (const p of particles) {
+    p.x  += p.vx; p.y  += p.vy; p.vy += 0.28; p.vx *= 0.97;
+    p.life -= p.dec;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // Popups
+  for (const p of popups) { p.y -= 1.2; p.life -= p.dec; }
+  popups = popups.filter(p => p.life > 0);
+
+  // Difficulty creep
+  if (frame % 600 === 0) baseSpd = Math.min(8, baseSpd + 0.3);
+
+  // End conditions
+  if (progress >= 100) state = 'win';
+  else if (timeLeft <= 0) state = 'lose';
+}
+
+// ── Draw helpers ──────────────────────────────────────────────
+function rRect(x, y, w, h, r = 4) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x,     y + h, r);
+  ctx.arcTo(x,     y + h, x,     y,     r);
+  ctx.arcTo(x,     y,     x + w, y,     r);
+  ctx.closePath();
+}
+
+// ── Draw background ───────────────────────────────────────────
+function drawBg() {
+  // Sky
+  const sky = ctx.createLinearGradient(0, 0, 0, LANE_TOP);
+  sky.addColorStop(0, '#06061a');
+  sky.addColorStop(1, '#14143a');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, LANE_TOP);
+
+  // Stars
+  for (let i = 0; i < 45; i++) {
+    const sx = ((i * 131 + frame * 0.025) % W + W) % W;
+    const sy = (i * 59) % LANE_TOP;
+    const br = 0.35 + Math.sin(frame * 0.04 + i * 0.8) * 0.3;
+    ctx.fillStyle = `rgba(255,255,255,${br})`;
+    ctx.fillRect(sx, sy, 1.5, 1.5);
+  }
+
+  // Moon
+  ctx.fillStyle = 'rgba(255,255,210,0.92)';
+  ctx.beginPath(); ctx.arc(W * 0.87, LANE_TOP * 0.28, 17, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#08081a';
+  ctx.beginPath(); ctx.arc(W * 0.87 - 8, LANE_TOP * 0.28 - 5, 13, 0, Math.PI * 2); ctx.fill();
+
+  // Buildings
+  BUILDINGS.forEach(b => {
+    ctx.fillStyle = '#10102a';
+    ctx.fillRect(b.bx, LANE_TOP - b.bh, b.bw, b.bh);
+    const cols = Math.floor(b.bw / 9);
+    const rows = Math.floor(b.bh / 13);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (b.wins[(r * cols + c) % b.wins.length]) {
+          ctx.fillStyle = 'rgba(255,220,80,0.45)';
+          ctx.fillRect(b.bx + c * 9 + 2, LANE_TOP - b.bh + r * 13 + 4, 5, 7);
+        }
+      }
+    }
+  });
+
+  // Road
+  const road = ctx.createLinearGradient(0, LANE_TOP, 0, LANE_BOT);
+  road.addColorStop(0, '#222234'); road.addColorStop(1, '#181828');
+  ctx.fillStyle = road; ctx.fillRect(0, LANE_TOP, W, LANE_BOT - LANE_TOP);
+
+  // Kerbs
+  ctx.fillStyle = '#303048';
+  ctx.fillRect(0, LANE_TOP,      W, 7);
+  ctx.fillRect(0, LANE_BOT - 7,  W, 7);
+
+  // Lane lines
+  ctx.setLineDash([22, 18]); ctx.strokeStyle = 'rgba(255,255,140,0.22)'; ctx.lineWidth = 2;
+  for (let l = 1; l < LANES; l++) {
+    const ly = LANE_TOP + LANE_H * l;
+    ctx.beginPath(); ctx.moveTo(-(bgOff % 40), ly); ctx.lineTo(W, ly); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Below road
+  ctx.fillStyle = '#0e0e1c'; ctx.fillRect(0, LANE_BOT, W, H - LANE_BOT);
+}
+
+// ── Draw detective ─────────────────────────────────────────────
+function drawDetective() {
+  const { x, y, anim, hitT, boostT } = det;
+  ctx.save();
+  ctx.translate(x, y);
+
+  if (hitT > 0 && Math.floor(frame / 5) % 2) { ctx.globalAlpha = 0.25; }
+  if (boostT > 0) { ctx.shadowColor = '#FFD700'; ctx.shadowBlur = 18; }
+
+  const sc = CHAR_SIZE / 80;
+  ctx.scale(sc, sc);
+  const leg = Math.sin(anim * Math.PI / 2) * 14;
+
+  // Back leg
+  ctx.fillStyle = '#20204a';
+  rRect(-7, 28, 11, 24 - Math.abs(leg * 0.4), 3); ctx.fill();
+  // Front leg
+  rRect(2, 30 + leg, 11, 24, 3); ctx.fill();
+
+  // Coat
+  ctx.fillStyle = boostT > 0 ? '#6B4E00' : '#3c2610';
+  rRect(-16, -18, 38, 47, 6); ctx.fill();
+
+  // Lapels
+  ctx.fillStyle = boostT > 0 ? '#9B6E00' : '#5a3a18';
+  ctx.beginPath(); ctx.moveTo(-2,-18); ctx.lineTo(-9,-1); ctx.lineTo(-2,-7); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(12,-18); ctx.lineTo(19,-1); ctx.lineTo(12,-7); ctx.closePath(); ctx.fill();
+
+  // Arms
+  ctx.fillStyle = '#3c2610';
+  rRect(-22, -14, 9, 22, 3); ctx.fill();
+  rRect( 19, -14 + leg * 0.28, 9, 22, 3); ctx.fill();
+
+  // Head
+  ctx.fillStyle = '#F5C97A';
+  ctx.beginPath(); ctx.arc(5, -30, 14, 0, Math.PI * 2); ctx.fill();
+
+  // Hat brim
+  ctx.fillStyle = '#111';
+  rRect(-11, -47, 32, 8, 3); ctx.fill();
+  // Hat crown
+  ctx.fillRect(-5, -58, 20, 13);
+  // Hat band
+  ctx.fillStyle = boostT > 0 ? '#DAA520' : '#7a5c14';
+  ctx.fillRect(-5, -47, 20, 3);
+
+  // Eye
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.arc(10, -33, 2.5, 0, Math.PI * 2); ctx.fill();
+
+  // Magnifying glass
+  ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(-22, 4, 9, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-15, 11); ctx.lineTo(-9, 18); ctx.stroke();
+  ctx.fillStyle = 'rgba(140,200,255,0.3)';
+  ctx.beginPath(); ctx.arc(-22, 4, 7, 0, Math.PI * 2); ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+// ── Draw criminal ──────────────────────────────────────────────
+function drawCriminal() {
+  if (progress < 12) return;
+
+  const t     = Math.min(1, (progress - 12) / 88);
+  const alpha = Math.min(1, (progress - 12) / 25);
+  const scale = 0.28 + t * 0.62;
+
+  // Criminal moves from far right toward detective as t→1
+  const cx = W - 70 - t * (W - 70 - DET_X - 115);
+  const cy = LANE_Y[crim.lane];
+  const cf = Math.floor(frame / 8) % 4;
+  const cl = Math.sin(cf * Math.PI / 2) * 14;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.globalAlpha = alpha;
+  ctx.scale(scale, scale);
+
+  // Legs
+  ctx.fillStyle = '#1a1a1a';
+  rRect(-7, 28, 11, 24, 3); ctx.fill();
+  rRect( 2, 30 + cl, 11, 24, 3); ctx.fill();
+
+  // Striped shirt
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = i % 2 === 0 ? '#111' : '#444';
+    ctx.fillRect(-14, -16 + i * 11, 34, 11);
+  }
+
+  // Head
+  ctx.fillStyle = '#F5C97A';
+  ctx.beginPath(); ctx.arc(5, -28, 13, 0, Math.PI * 2); ctx.fill();
+
+  // Mask
+  ctx.fillStyle = '#111';
+  ctx.fillRect(-6, -33, 22, 8);
+  ctx.fillRect(-4, -25, 18, 5);
+
+  // Money bag
+  ctx.fillStyle = '#DAA520';
+  ctx.beginPath(); ctx.arc(26, -3, 12, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#8B6000'; ctx.font = 'bold 13px Arial';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('¥', 26, -3);
+
+  ctx.restore();
+}
+
+// ── Draw items ────────────────────────────────────────────────
+function drawItems() {
+  const em = Math.round(LANE_H * 0.40);
+  items.forEach(it => {
+    if (!it.on) return;
+    ctx.save();
+    const fy = it.y + (it.isEv ? Math.sin(frame * 0.07 + it.x * 0.02) * 5 : 0);
+    if (it.isEv) { ctx.shadowColor = it.col; ctx.shadowBlur = 10 + Math.sin(frame * 0.1) * 4; }
+    ctx.font = `${em}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(it.e, it.x, fy);
+
+    // Danger ring for close obstacles
+    if (!it.isEv && it.x > det.x && it.x - det.x < W * 0.22) {
+      const pulse = 0.25 + Math.sin(frame * 0.35) * 0.25;
+      ctx.strokeStyle = `rgba(255,60,60,${pulse})`;
+      ctx.lineWidth = 2.5; ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(it.x, fy, 28 + Math.sin(frame * 0.35) * 4, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  });
+}
+
+// ── Draw particles ─────────────────────────────────────────────
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.sz * p.life, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  });
+}
+
+// ── Draw popups ────────────────────────────────────────────────
+function drawPopups() {
+  popups.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.col;
+    ctx.font = 'bold 15px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(p.txt, p.x, p.y);
+    ctx.restore();
+  });
+}
+
+// ── Draw HUD ──────────────────────────────────────────────────
+function drawHUD() {
+  const bx = W * 0.14, by = 10, bw = W * 0.72, bh = 20;
+
+  // Shadow panel
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  rRect(bx - 38, by - 5, bw + 76, bh + 10, 7); ctx.fill();
+
+  // Track
+  ctx.fillStyle = '#2a2a3a'; rRect(bx, by, bw, bh, 5); ctx.fill();
+
+  // Fill
+  if (progress > 0) {
+    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+    g.addColorStop(0, '#2244FF'); g.addColorStop(0.5, '#FFD700'); g.addColorStop(1, '#FF2222');
+    ctx.fillStyle = g; rRect(bx, by, bw * (progress / 100), bh, 5); ctx.fill();
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    rRect(bx, by, bw * (progress / 100), bh / 2, 5); ctx.fill();
+  }
+
+  // Icons
+  const iSz = Math.round(bh * 1.5);
+  ctx.font = `${iSz}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('🕵️', bx - 24, by + bh / 2);
+  ctx.fillText('🦹', bx + bw + 24, by + bh / 2);
+
+  // Percent label
+  ctx.fillStyle = 'white'; ctx.font = `bold ${Math.round(bh * 0.72)}px Arial`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(`${Math.floor(progress)}%`, bx + bw / 2, by + bh / 2);
+
+  // Score
+  ctx.fillStyle = '#FFD700'; ctx.font = 'bold 17px Arial';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText(`スコア: ${score}`, 12, H - 30);
+
+  // Timer
+  const tc = timeLeft < 10 ? `hsl(${Math.floor(timeLeft * 12)},100%,60%)` : '#EEF';
+  ctx.fillStyle = tc; ctx.textAlign = 'right';
+  ctx.fillText(`残り ${Math.ceil(timeLeft)}秒`, W - 12, H - 30);
+
+  // Boost
+  if (det.boostT > 0) {
+    const a = 0.6 + Math.sin(frame * 0.45) * 0.4;
+    ctx.fillStyle = `rgba(255,215,0,${a})`; ctx.textAlign = 'right';
+    ctx.fillText('⚡ 加速中！', W - 12, 42);
+  }
+
+  // Lane guide arrows (subtle)
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.font = '13px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText('↑↓', 10, H / 2);
+}
+
+// ── Draw title screen ─────────────────────────────────────────
+function drawTitle() {
+  ctx.fillStyle = 'rgba(4,4,16,0.96)'; ctx.fillRect(0, 0, W, H);
+
+  // Stars
+  for (let i = 0; i < 70; i++) {
+    const sx = ((i * 137 + frame * 0.06) % W + W) % W;
+    const sy = (i * 61) % H;
+    const br = 0.2 + Math.sin(frame * 0.04 + i * 0.7) * 0.3;
+    ctx.fillStyle = `rgba(255,255,255,${br})`; ctx.fillRect(sx, sy, 1.5, 1.5);
+  }
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+  // Title glow
+  ctx.shadowColor = '#FFD700'; ctx.shadowBlur = 24;
+  const tg = ctx.createLinearGradient(0, 0, W, 0);
+  tg.addColorStop(0, '#FFD700'); tg.addColorStop(0.5, '#FFFACD'); tg.addColorStop(1, '#FFD700');
+  ctx.fillStyle = tg;
+  ctx.font = `bold ${Math.round(W * 0.071)}px serif`;
+  ctx.fillText('名探偵チェイス！', W / 2, H * 0.21);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#AABBFF'; ctx.font = `${Math.round(W * 0.031)}px serif`;
+  ctx.fillText('犯人を追いかけて証拠を集めろ！', W / 2, H * 0.33);
+
+  // Animated chars
+  const bounce = Math.sin(frame * 0.08) * 6;
+  ctx.font = `${Math.round(W * 0.09)}px serif`;
+  ctx.fillText('🕵️', W / 2 - W * 0.16, H * 0.50 + bounce);
+  const ap = 0.45 + Math.sin(frame * 0.13) * 0.45;
+  ctx.fillStyle = `rgba(255,200,0,${ap})`;
+  ctx.font = `bold ${Math.round(W * 0.046)}px Arial`;
+  ctx.fillText('➤➤➤', W / 2, H * 0.50);
+  ctx.font = `${Math.round(W * 0.09)}px serif`;
+  ctx.fillText('🦹', W / 2 + W * 0.16, H * 0.50 - bounce);
+
+  // Instructions
+  const fs = Math.round(W * 0.027);
+  ctx.fillStyle = 'rgba(200,220,255,0.9)'; ctx.font = `${fs}px Arial`;
+  ctx.fillText('↑↓ キー または スワイプ：レーン変更（3レーン）', W / 2, H * 0.652);
+  ctx.fillText('🔍📋💎👣🔑　証拠品を拾うと速度アップ！', W / 2, H * 0.718);
+  ctx.fillText('🛢🚧📦　障害物に当たると速度ダウン！', W / 2, H * 0.782);
+  ctx.fillText(`制限時間 ${TIME_LIMIT} 秒以内に犯人に追いつけ！`, W / 2, H * 0.845);
+
+  const sp = 0.45 + Math.sin(frame * 0.07) * 0.45;
+  ctx.fillStyle = `rgba(255,215,0,${sp})`;
+  ctx.font = `bold ${Math.round(W * 0.034)}px Arial`;
+  ctx.fillText('スペース / クリックでスタート！', W / 2, H * 0.918);
+}
+
+// ── Draw end overlay ──────────────────────────────────────────
+function drawEnd(win) {
+  ctx.fillStyle = win ? 'rgba(0,8,0,0.88)' : 'rgba(16,0,0,0.88)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '62px serif';
+  ctx.fillText(win ? '🎉' : '😱', W / 2, H * 0.24);
+
+  const col = win ? '#FFD700' : '#FF4444';
+  ctx.shadowColor = col; ctx.shadowBlur = 18;
+  const g = ctx.createLinearGradient(0, 0, W, 0);
+  g.addColorStop(0, col); g.addColorStop(0.5, '#FFF'); g.addColorStop(1, col);
+  ctx.fillStyle = g;
+  ctx.font = `bold ${Math.round(W * 0.062)}px serif`;
+  ctx.fillText(win ? '犯人逮捕！' : '逃げられた！', W / 2, H * 0.44);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = 'rgba(210,220,255,0.92)'; ctx.font = `${Math.round(W * 0.030)}px Arial`;
+  ctx.fillText(win ? 'さすが名探偵！事件を解決した！' : '犯人が闇に消えた…もう一度挑戦！', W / 2, H * 0.57);
+
+  ctx.fillStyle = '#FFD700'; ctx.font = `bold ${Math.round(W * 0.038)}px Arial`;
+  ctx.fillText(`スコア：${score} 点`, W / 2, H * 0.69);
+
+  const sp = 0.45 + Math.sin(frame * 0.08) * 0.45;
+  ctx.fillStyle = `rgba(255,255,255,${sp})`; ctx.font = `${Math.round(W * 0.028)}px Arial`;
+  ctx.fillText('スペース / クリックでもう一度', W / 2, H * 0.84);
+}
+
+// ── Main draw ─────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  if (state === 'title') { frame++; drawTitle(); return; }
+
+  drawBg();
+  drawCriminal();
+  drawItems();
+  drawParticles();
+  drawDetective();
+  drawPopups();
+  drawHUD();
+
+  if (state === 'win')  drawEnd(true);
+  if (state === 'lose') drawEnd(false);
+}
+
+// ── Loop ──────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = lastTS ? Math.min((ts - lastTS) / 1000, 0.05) : 0.016;
+  lastTS = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
