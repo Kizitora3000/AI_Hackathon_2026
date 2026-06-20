@@ -92,89 +92,80 @@
             gap: 20px;
         }
 
-        /* 漫画風 集中線パネル */
+        /* 漫画風パネル（画像ベースに変更） */
         .manga-panel-wrapper {
             position: relative;
-            width: 100%;
-            height: 220px;
+            width: 55%;
+            max-width: 400px;
             border: 4px solid #000;
             box-shadow: 8px 8px 0px #000;
-            overflow: hidden;
+            overflow: visible;
             background: #fff;
+            container-type: inline-size; /* コンテナクエリ用 */
         }
 
-        #linesCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
+        .base-image {
             width: 100%;
-            height: 100%;
-            z-index: 1;
+            height: auto;
+            display: block;
         }
 
-        /* 驚き・ツッコミのトゲトゲ吹き出し風 */
-        .shout-box {
-            position: relative;
-            z-index: 2;
-            width: 85%;
-            height: 80%;
-            margin: 4% auto;
-            background: #fff;
-            border: 4px solid #000;
+        /* 左側の吹き出しを覆う白丸＆縦書きコンテナ */
+        .custom-bubble {
+            position: absolute;
+            top: 7%;
+            left: 2%;
+            width: 45%;
+            height: 31%;
+            background-color: #fff;
+            border-radius: 50%;
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
             padding: 10px;
-            transform: rotate(-0.5deg);
-            box-shadow: 4px 4px 0px rgba(0,0,0,0.2);
+            box-sizing: border-box;
+            transform: rotate(-2deg);
+        }
+
+        /* 縦書き設定 */
+        .vertical-text-container {
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            height: 90%;
             animation: shake 0.1s infinite alternate;
             animation-play-state: paused;
         }
 
         @keyframes shake {
-            0% { transform: translate(2px, 1px) rotate(-0.5deg); }
-            100% { transform: translate(-2px, -1px) rotate(0.5deg); }
-        }
-
-        /* 前後の叫びセリフスタイル */
-        .speech-prefix {
-            font-size: 14px;
-            font-weight: 900;
-            color: #000;
-            align-self: flex-start;
-            margin-left: 10px;
-            letter-spacing: 1px;
-        }
-
-        /* ★「だ！！！」を黒文字＆さらに太く大きく修正★ */
-        .speech-suffix {
-            font-size: 24px;
-            font-weight: 950;
-            color: #000000;
-            align-self: flex-end;
-            margin-right: 15px;
-            margin-top: 2px;
-            letter-spacing: 2px;
-            -webkit-text-stroke: 0.5px #000;
+            0% { transform: translate(1px, 1px); }
+            100% { transform: translate(-1px, -1px); }
         }
 
         .full-title {
-            font-size: 14px;
+            font-size: clamp(10px, 3cqi, 14px);
             color: #555;
             font-weight: 900;
             letter-spacing: 1px;
-            margin-top: 2px;
         }
 
         .full-name {
-            font-size: 32px;
+            font-size: clamp(14px, 5.5cqi, 24px);
             font-weight: 900;
             color: #000;
-            letter-spacing: -1px;
-            margin: 2px 0;
-            text-align: center;
-            line-height: 1.2;
+            letter-spacing: 1px;
+            margin: 0 5px;
+        }
+
+        .speech-suffix {
+            font-size: clamp(14px, 4.5cqi, 20px);
+            font-weight: 950;
+            color: #000000;
+            letter-spacing: 2px;
+            margin-top: 5px;
         }
 
         .avatar-frame {
@@ -224,14 +215,14 @@
 
     <div class="summon-area">
         <div class="manga-panel-wrapper">
-            <canvas id="linesCanvas"></canvas>
-            <div class="shout-box" id="shout-box">
-                <div class="speech-prefix">「ボ、ボクの名前は、</div>
-                
-                <div id="res-title" class="full-title"></div>
-                <div id="res-name" class="full-name">READY...</div>
-                
-                <div class="speech-suffix">だ！！！」</div>
+            <img src="コナン名前.jpg" alt="Conan" class="base-image">
+            
+            <div class="custom-bubble">
+                <div class="vertical-text-container" id="shout-box">
+                    <div id="res-title" class="full-title"></div>
+                    <div id="res-name" class="full-name">READY...</div>
+                    <div class="speech-suffix">だ！！！</div>
+                </div>
             </div>
         </div>
         
@@ -298,50 +289,11 @@ window.onload = () => {
 };
 
 function initCanvases() {
-    const linesCanvas = document.getElementById('linesCanvas');
-    linesCanvas.width = linesCanvas.offsetWidth;
-    linesCanvas.height = linesCanvas.offsetHeight;
-    
-    const ctx = linesCanvas.getContext('2d');
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, linesCanvas.width, linesCanvas.height);
-    drawSpeedLines(linesCanvas);
-
+    // 集中線Canvasは画像置き換えに伴い削除
     const avatarCanvas = document.getElementById('avatarCanvas');
     const actx = avatarCanvas.getContext('2d');
     actx.fillStyle = '#222';
     actx.fillRect(0, 0, 180, 180);
-}
-
-function drawSpeedLines(canvas) {
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width;
-    const h = canvas.height;
-    const centerX = w / 2;
-    const centerY = h / 2;
-
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, w, h);
-
-    const lineCount = 180;
-    ctx.strokeStyle = '#000000';
-    
-    for (let i = 0; i < lineCount; i++) {
-        const angle = (i * 2 * Math.PI) / lineCount + (Math.random() * 0.05);
-        const radius = 75 + Math.random() * 35;
-        const lineLength = Math.max(w, h);
-
-        const startX = centerX + Math.cos(angle) * radius;
-        const startY = centerY + Math.sin(angle) * radius;
-        const endX = centerX + Math.cos(angle) * lineLength;
-        const endY = centerY + Math.sin(angle) * lineLength;
-
-        ctx.lineWidth = 1 + Math.random() * 2.5;
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(endX, endY);
-        ctx.stroke();
-    }
 }
 
 function generateChimera() {
@@ -369,9 +321,7 @@ function generateChimera() {
         <div class="origin-item"><span>下部:</span> ${p3.source}</div>
     `;
 
-    const linesCanvas = document.getElementById('linesCanvas');
-    drawSpeedLines(linesCanvas);
-
+    // 文字の振動アニメーションを付与
     const shoutBox = document.getElementById('shout-box');
     shoutBox.style.animationPlayState = 'running';
     setTimeout(() => { shoutBox.style.animationPlayState = 'paused'; }, 500);
